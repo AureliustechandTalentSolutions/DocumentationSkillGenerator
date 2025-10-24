@@ -51,6 +51,7 @@ class DocToSkillConverter:
         self.pending_urls = deque(start_urls)
         self.pages = []
         self.pages_scraped = 0
+        self.failed_urls = []  # Track URLs that failed to scrape
 
         # Thread-safe lock for parallel scraping
         if self.workers > 1:
@@ -396,6 +397,12 @@ class DocToSkillConverter:
             from concurrent.futures import ThreadPoolExecutor, as_completed
 
             print(f"🚀 Starting parallel scraping with {self.workers} workers\n")
+            
+            # Warn about aggressive rate limiting settings
+            if self.workers > 1 and self.config.get('rate_limit', 0.5) == 0:
+                print(f"⚠️  WARNING: Rate limiting disabled with {self.workers} workers!")
+                print(f"   This could trigger DDoS protection or IP bans.")
+                print(f"   Consider adding 'rate_limit': 0.5 or higher to your config.\n")
 
             with ThreadPoolExecutor(max_workers=self.workers) as executor:
                 futures = []
@@ -419,6 +426,7 @@ class DocToSkillConverter:
                     for url in batch:
                         if unlimited or len(self.visited_urls) <= preview_limit:
                             future = executor.submit(self.scrape_page, url)
+                            future._url = url  # Track URL for better error reporting
                             futures.append(future)
 
                     # Wait for some to complete before submitting more
@@ -429,7 +437,9 @@ class DocToSkillConverter:
                             future.result()  # Raises exception if scrape_page failed
                         except Exception as e:
                             with self.lock:
-                                print(f"  ⚠️  Worker exception: {e}")
+                                failed_url = getattr(future, '_url', 'unknown')
+                                print(f"  ✗ Failed to scrape {failed_url}: {e}")
+                                self.failed_urls.append(failed_url)
 
                         completed += 1
 
@@ -452,7 +462,9 @@ class DocToSkillConverter:
                         future.result()
                     except Exception as e:
                         with self.lock:
-                            print(f"  ⚠️  Worker exception: {e}")
+                            failed_url = getattr(future, '_url', 'unknown')
+                            print(f"  ✗ Failed to scrape {failed_url}: {e}")
+                            self.failed_urls.append(failed_url)
 
                     with self.lock:
                         self.pages_scraped += 1
@@ -464,6 +476,15 @@ class DocToSkillConverter:
             print(f"\n💡 To actually scrape, run without --dry-run")
         else:
             print(f"\n✅ Scraped {len(self.visited_urls)} pages")
+            
+            # Report failed URLs if any
+            if self.failed_urls:
+                print(f"\n⚠️  {len(self.failed_urls)} pages failed to scrape:")
+                for failed_url in self.failed_urls[:10]:
+                    print(f"   - {failed_url}")
+                if len(self.failed_urls) > 10:
+                    print(f"   ... and {len(self.failed_urls) - 10} more")
+            
             self.save_summary()
     
     def save_summary(self):
