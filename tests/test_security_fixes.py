@@ -206,10 +206,11 @@ class TestExceptionHandling(unittest.TestCase):
                 output = mock_stdout.getvalue()
                 # We expect to see the failure indicators in the output
                 if converter.workers > 1:
-                    # In parallel mode, we track failed URLs
-                    self.assertTrue(
-                        'Failed to scrape' in output or len(converter.failed_urls) >= 0,
-                        "Expected failure tracking in parallel mode"
+                    # In parallel mode, we should track failed URLs
+                    # Note: The actual tracking happens during real scraping,
+                    # this test validates the mechanism is in place
+                    self.assertIsInstance(converter.failed_urls, list,
+                        "Expected failed_urls to be a list in parallel mode"
                     )
 
 

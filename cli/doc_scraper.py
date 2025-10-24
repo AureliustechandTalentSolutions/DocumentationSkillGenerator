@@ -426,7 +426,11 @@ class DocToSkillConverter:
                     for url in batch:
                         if unlimited or len(self.visited_urls) <= preview_limit:
                             future = executor.submit(self.scrape_page, url)
-                            future._url = url  # Track URL for better error reporting
+                            # Store URL on future for error reporting
+                            # Note: While non-standard, this is a common pattern for tracking
+                            # context with futures. Alternative would be a separate dict mapping
+                            # futures to URLs, but that adds memory overhead and lookup complexity.
+                            future._url = url
                             futures.append(future)
 
                     # Wait for some to complete before submitting more
